@@ -4,7 +4,7 @@ import time
 import threading
 import datetime
 import sys
-form shareithub import shareithub
+from shareithub import shareithub
 from concurrent.futures import ThreadPoolExecutor
 from fake_useragent import UserAgent
 from rich.console import Console
