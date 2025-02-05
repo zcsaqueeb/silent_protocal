@@ -4,7 +4,7 @@
 
 Create screen :
 ```
-Screen -S silentprotocol
+screen -S silentprotocol
 ```
 
 copy this to install Python3 Dll.
