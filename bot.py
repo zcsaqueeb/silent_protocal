@@ -79,7 +79,6 @@ def run_automation(token):
     scraper = get_scraper()
     while True:
 
-        console.clear()
         sys.stdout.write(f"\r🔄 Checking position & ping for {token[:6]}... ")
         sys.stdout.flush()
         
