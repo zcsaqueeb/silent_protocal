@@ -1,8 +1,6 @@
 import shareithub
 import cloudscraper
 import time
-import threading
-import datetime
 import sys
 import json
 from shareithub import shareithub
