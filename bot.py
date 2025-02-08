@@ -4,12 +4,14 @@ import time
 import threading
 import datetime
 import sys
+import json
 from shareithub import shareithub
 from concurrent.futures import ThreadPoolExecutor
 from fake_useragent import UserAgent
 from rich.console import Console
 from rich.table import Table
 from rich.progress import track
+import requests
 
 console = Console()
 
@@ -17,11 +19,22 @@ shareithub()
 position_url = "https://ceremony-backend.silentprotocol.org/ceremony/position"
 ping_url = "https://ceremony-backend.silentprotocol.org/ceremony/ping"
 token_file = "tokens.txt"
+config_file = "config.json"
 
-ua = UserAgent()  # Inisialisasi fake_useragent
+ua = UserAgent()  # Initialize fake_useragent
+
+def load_config():
+    """Load configuration from file."""
+    try:
+        with open(config_file, "r") as file:
+            config = json.load(file)
+            return config
+    except Exception as e:
+        console.print(f"[red]❌ Error loading config: {e}[/red]\n")
+        sys.exit()
 
 def load_tokens():
-    """Memuat token dari file."""
+    """Load tokens from file."""
     try:
         with open(token_file, "r") as file:
             tokens = [line.strip() for line in file if line.strip()]
@@ -33,14 +46,14 @@ def load_tokens():
             return tokens
     except Exception as e:
         console.print(f"[red]❌ Error loading tokens: {e}[/red]\n")
-        return []
+        sys.exit()
 
 def get_scraper():
-    """Membuat scraper dengan Cloudflare bypass."""
+    """Create scraper with Cloudflare bypass."""
     return cloudscraper.create_scraper()
 
 def get_headers(token):
-    """Mengembalikan headers dengan token dan user-agent acak."""
+    """Return headers with token and random user-agent."""
     return {
         "Authorization": f"Bearer {token}",
         "Accept": "*/*",
@@ -48,7 +61,7 @@ def get_headers(token):
     }
 
 def get_position(scraper, token):
-    """Mengambil posisi antrean untuk token tertentu."""
+    """Get queue position for a specific token."""
     try:
         response = scraper.get(position_url, headers=get_headers(token))
         if response.status_code == 200:
@@ -59,7 +72,7 @@ def get_position(scraper, token):
         return {"token": token[:6], "error": f"Error: {str(e)}"}
 
 def ping_server(scraper, token):
-    """Melakukan ping ke server dengan token tertentu."""
+    """Ping the server with a specific token."""
     try:
         response = scraper.get(ping_url, headers=get_headers(token))
         if response.status_code == 200:
@@ -69,8 +82,19 @@ def ping_server(scraper, token):
     except Exception as e:
         return {"token": token[:6], "error": f"Error: {str(e)}"}
 
-def run_automation(token):
-    """Loop utama untuk mengecek posisi dan ping secara terus-menerus."""
+def send_telegram_message(bot_token, chat_id, message):
+    """Send a message to a Telegram chat."""
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": message}
+    try:
+        response = requests.post(url, data=payload)
+        if response.status_code != 200:
+            console.print(f"[red]❌ Failed to send message: {response.text}[/red]\n")
+    except Exception as e:
+        console.print(f"[red]❌ Error sending message: {str(e)}[/red]\n")
+
+def run_automation(token, bot_token, chat_id):
+    """Main loop to check position and ping continuously."""
     scraper = get_scraper()
     while True:
         position_data = get_position(scraper, token)
@@ -79,7 +103,7 @@ def run_automation(token):
         # Header token
         console.print(f"\n[cyan]Status for Token: {token[:6]}[/cyan]")
 
-        # Membuat tabel
+        # Create table
         table = Table(show_lines=True)
         table.add_column("🔢 Token", style="cyan", justify="center")
         table.add_column("📌 Position", style="green", justify="center")
@@ -92,22 +116,30 @@ def run_automation(token):
             table.add_row(position_data["token"], str(position_data["behind"]), str(position_data["time_remaining"]),
                           str(ping_data["status"] if "status" in ping_data else "[red]❌ Error[/red]"))
 
-        # Menampilkan tabel
+        # Display table
         console.print(table)
-        
-        # Mempercepat proses dengan sleep lebih singkat
-        time.sleep(3)  # Awalnya 10 detik, sekarang 3 detik
+
+        # Send Telegram update
+        message = f"Token: {position_data['token']}\nPosition: {position_data.get('behind', '-')}\nTime Remaining: {position_data.get('time_remaining', '-')}\nPing Status: {ping_data.get('status', 'Error')}"
+        send_telegram_message(bot_token, chat_id, message)
+
+        # Speed up the process with shorter sleep
+        time.sleep(3)  # Originally 10 seconds, now 3 seconds
 
 def main():
+    config = load_config()
     tokens = load_tokens()
+
+    bot_token = config["TELEGRAM_BOT_TOKEN"]
+    chat_id = config["TELEGRAM_CHAT_ID"]
 
     console.print("\n🔄 Processing tokens...\n")
     for _ in track(range(len(tokens)), description="Starting Automation..."):
-        time.sleep(0.2)  # Mempercepat progress bar
+        time.sleep(0.2)  # Speed up progress bar
 
-    # Menggunakan ThreadPoolExecutor agar lebih cepat dan efisien
+    # Use ThreadPoolExecutor for faster and more efficient processing
     with ThreadPoolExecutor(max_workers=len(tokens)) as executor:
-        executor.map(run_automation, tokens)
+        executor.map(lambda token: run_automation(token, bot_token, chat_id), tokens)
 
 if __name__ == "__main__":
     main()
